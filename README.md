@@ -9,7 +9,7 @@ Add words in `data.js`.
 
 ## Install on your phone
 1. Repo Settings → Pages → Deploy from branch `main`, root.
-2. Open `https://<user>.github.io/darija/` on your phone.
+2. Open `https://vanmoorseljasper-png.github.io/vanmoorseljasper-png-darija/` on your phone.
 3. Share → Add to Home Screen (iOS) or menu → Install app (Android).
 
 ## Run locally
