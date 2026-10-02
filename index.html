@@ -33,6 +33,14 @@
   .item { background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
   .item b { display:block; } .item span { color:var(--muted); }
   h2 { font-size:15px; color:var(--muted); text-transform:uppercase; margin:18px 0 8px; }
+  .chips { display:flex; gap:8px; overflow-x:auto; padding-bottom:6px; margin-bottom:10px; }
+  .chip { flex:none; padding:8px 14px; border-radius:20px; border:1px solid #0003; background:var(--card); color:var(--fg); font:inherit; font-size:15px; }
+  .chip.on { background:var(--accent); color:#fff; border-color:var(--accent); }
+  .seg { display:flex; background:var(--card); border-radius:12px; padding:4px; margin-bottom:8px; }
+  .seg button { flex:1; padding:10px; border:0; border-radius:9px; background:none; color:var(--fg); font:inherit; }
+  .seg button.on { background:var(--accent); color:#fff; }
+  .row button.nav { background:var(--muted); flex:0.8; }
+  .row button:disabled { opacity:.35; }
 </style>
 </head>
 <body>
@@ -49,46 +57,78 @@ const DAY = 864e5;
 const load = () => { try { return JSON.parse(localStorage.getItem("srs")) || {}; } catch { return {}; } };
 const save = s => { try { localStorage.setItem("srs", JSON.stringify(s)); } catch {} };
 let srs = load();
-let deck = "All", flipped = false, reverse = false;
 
 const all = Object.entries(DATA).flatMap(([cat, items]) => items.map(([d, e]) => ({ cat, d, e })));
 const esc = s => s.replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
 const app = document.getElementById("app");
 
+// mode "due": spaced repetition. mode "all": every card in the category, in order.
+// history holds what to undo for the Back button.
+let deck = "All", mode = "due", flipped = false, reverse = false, idx = 0, history = [], pinned = null;
+
+const inDeck = () => all.filter(c => deck === "All" || c.cat === deck);
 function due() {
   const now = Date.now();
-  return all.filter(c => (deck === "All" || c.cat === deck) && (srs[c.d]?.due ?? 0) <= now);
+  return inDeck().filter(c => (srs[c.d]?.due ?? 0) <= now);
 }
 
 function cards() {
-  const q = due();
-  const c = q[0];
-  const opts = ["All", ...Object.keys(DATA)].map(k => `<option ${k === deck ? "selected" : ""}>${k}</option>`).join("");
+  const list = inDeck();
+  const q = mode === "due" ? due() : list;
+  const c = mode === "due" ? (all.find(x => x.d === pinned) || q[0]) : q[idx];
+  const chips = ["All", ...Object.keys(DATA)].map(k =>
+    `<button class="chip ${k === deck ? "on" : ""}" data-deck="${k}">${k}</button>`).join("");
+  const count = mode === "due" ? `${q.length} due` : `${Math.min(idx + 1, q.length)} / ${q.length}`;
   app.innerHTML = `<h1>Flashcards</h1>
-    <select id="deck">${opts}</select>
+    <div class="chips">${chips}</div>
+    <div class="seg"><button data-mode="due" class="${mode === "due" ? "on" : ""}">Review due</button><button data-mode="all" class="${mode === "all" ? "on" : ""}">Do them all</button></div>
     <label class="meta"><input type="checkbox" id="rev" ${reverse ? "checked" : ""} style="width:auto"> English first</label>
     ${c ? `<div class="card" id="card">
         <div class="front">${esc(reverse ? c.e : c.d)}</div>
         ${flipped ? `<div class="back">${esc(reverse ? c.d : c.e)}</div>` : `<div class="meta">tap to reveal</div>`}
       </div>
-      ${flipped ? `<div class="row"><button class="again" id="again">Again</button><button class="good" id="good">Got it</button></div>` : ""}
-      <div class="meta">${q.length} due</div>`
-    : `<div class="card"><div class="front">Done 🎉</div><div class="meta">Nothing due. Come back later.</div></div>`}`;
-  document.getElementById("deck").onchange = e => { deck = e.target.value; flipped = false; cards(); };
+      <div class="row">
+        <button class="nav" id="back" ${history.length ? "" : "disabled"}>← Back</button>
+        ${flipped ? `<button class="again" id="again">Again</button><button class="good" id="good">Got it</button>` : ""}
+      </div>
+      <div class="meta">${count}</div>`
+    : `<div class="card"><div class="front">Done 🎉</div><div class="meta">${mode === "due" ? "Nothing due here." : "You went through them all."}</div></div>
+      <div class="row"><button class="nav" id="back" ${history.length ? "" : "disabled"}>← Back</button><button class="good" id="restart">Do them all again</button></div>`}`;
+  app.querySelectorAll("[data-deck]").forEach(b => b.onclick = () => { deck = b.dataset.deck; reset(); });
+  app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; reset(); });
   document.getElementById("rev").onchange = e => { reverse = e.target.checked; flipped = false; cards(); };
+  document.getElementById("back").onclick = back;
+  const r = document.getElementById("restart");
+  if (r) r.onclick = () => { mode = "all"; reset(); };
   if (!c) return;
-  document.getElementById("card").onclick = () => { flipped = true; cards(); };
+  document.getElementById("card").onclick = () => { flipped = !flipped; cards(); };
   if (flipped) {
     document.getElementById("again").onclick = () => grade(c, false);
     document.getElementById("good").onclick = () => grade(c, true);
   }
 }
 
+function reset() { idx = 0; history = []; pinned = null; flipped = false; cards(); }
+
 function grade(c, ok) {
+  history.push({ d: c.d, prev: srs[c.d], idx });
   const box = ok ? Math.min((srs[c.d]?.box ?? 0) + 1, INTERVALS.length - 1) : 0;
   // "Again" puts the card a minute out so it returns at the end of this session.
   srs[c.d] = { box, due: Date.now() + (ok ? INTERVALS[box] * DAY : 6e4) };
-  save(srs); flipped = false; cards();
+  save(srs); flipped = false; pinned = null;
+  if (mode === "all") idx++;
+  cards();
+}
+
+// Undo the last grade and show that card again.
+function back() {
+  const h = history.pop();
+  if (!h) return;
+  if (h.prev) srs[h.d] = h.prev; else delete srs[h.d];
+  save(srs);
+  idx = h.idx; flipped = true;
+  pinned = mode === "due" ? h.d : null;
+  cards();
 }
 
 function phrases(filter = "") {
