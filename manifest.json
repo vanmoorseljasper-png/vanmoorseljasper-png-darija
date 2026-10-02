@@ -1,0 +1,9 @@
+{
+  "name": "Darija",
+  "short_name": "Darija",
+  "start_url": ".",
+  "display": "standalone",
+  "background_color": "#f6f4ef",
+  "theme_color": "#0b6e4f",
+  "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b6e4f">
+<title>Darija</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icons/icon.svg">
+<style>
+  :root { --bg:#f6f4ef; --card:#fff; --fg:#1d1d1b; --muted:#6b6b66; --accent:#0b6e4f; --bad:#c0392b; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#141413; --card:#1f1f1d; --fg:#eeece6; --muted:#9a9a93; --accent:#2fb486; --bad:#e46b5d; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font:17px/1.4 system-ui,sans-serif; background:var(--bg); color:var(--fg);
+         padding:env(safe-area-inset-top) 16px calc(72px + env(safe-area-inset-bottom)); }
+  h1 { font-size:22px; margin:16px 0 8px; }
+  nav { position:fixed; bottom:0; left:0; right:0; display:flex; background:var(--card);
+        border-top:1px solid #0002; padding-bottom:env(safe-area-inset-bottom); }
+  nav button { flex:1; padding:14px; border:0; background:none; color:var(--muted); font:inherit; }
+  nav button.on { color:var(--accent); font-weight:600; }
+  select, input { width:100%; padding:10px; font:inherit; border-radius:10px; border:1px solid #0003;
+                  background:var(--card); color:var(--fg); margin-bottom:12px; }
+  .card { background:var(--card); border-radius:16px; padding:32px 20px; min-height:220px; text-align:center;
+          display:flex; flex-direction:column; justify-content:center; box-shadow:0 2px 8px #0001; cursor:pointer; }
+  .front { font-size:30px; font-weight:600; }
+  .back { margin-top:16px; font-size:20px; color:var(--muted); }
+  .row { display:flex; gap:10px; margin-top:16px; }
+  .row button { flex:1; padding:14px; font:inherit; border:0; border-radius:12px; color:#fff; }
+  .again { background:var(--bad); } .good { background:var(--accent); }
+  .meta { color:var(--muted); font-size:14px; margin-top:10px; text-align:center; }
+  .item { background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:8px; }
+  .item b { display:block; } .item span { color:var(--muted); }
+  h2 { font-size:15px; color:var(--muted); text-transform:uppercase; margin:18px 0 8px; }
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav>
+  <button data-view="cards" class="on">Flashcards</button>
+  <button data-view="phrases">Phrasebook</button>
+</nav>
+<script src="data.js"></script>
+<script>
+// Leitner boxes: box 0..5, card due after INTERVALS[box] days.
+const INTERVALS = [0, 1, 2, 4, 8, 16];
+const DAY = 864e5;
+const load = () => { try { return JSON.parse(localStorage.getItem("srs")) || {}; } catch { return {}; } };
+const save = s => { try { localStorage.setItem("srs", JSON.stringify(s)); } catch {} };
+let srs = load();
+let deck = "All", flipped = false, reverse = false;
+
+const all = Object.entries(DATA).flatMap(([cat, items]) => items.map(([d, e]) => ({ cat, d, e })));
+const esc = s => s.replace(/[&<>"]/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;" }[c]));
+const app = document.getElementById("app");
+
+function due() {
+  const now = Date.now();
+  return all.filter(c => (deck === "All" || c.cat === deck) && (srs[c.d]?.due ?? 0) <= now);
+}
+
+function cards() {
+  const q = due();
+  const c = q[0];
+  const opts = ["All", ...Object.keys(DATA)].map(k => `<option ${k === deck ? "selected" : ""}>${k}</option>`).join("");
+  app.innerHTML = `<h1>Flashcards</h1>
+    <select id="deck">${opts}</select>
+    <label class="meta"><input type="checkbox" id="rev" ${reverse ? "checked" : ""} style="width:auto"> English first</label>
+    ${c ? `<div class="card" id="card">
+        <div class="front">${esc(reverse ? c.e : c.d)}</div>
+        ${flipped ? `<div class="back">${esc(reverse ? c.d : c.e)}</div>` : `<div class="meta">tap to reveal</div>`}
+      </div>
+      ${flipped ? `<div class="row"><button class="again" id="again">Again</button><button class="good" id="good">Got it</button></div>` : ""}
+      <div class="meta">${q.length} due</div>`
+    : `<div class="card"><div class="front">Done 🎉</div><div class="meta">Nothing due. Come back later.</div></div>`}`;
+  document.getElementById("deck").onchange = e => { deck = e.target.value; flipped = false; cards(); };
+  document.getElementById("rev").onchange = e => { reverse = e.target.checked; flipped = false; cards(); };
+  if (!c) return;
+  document.getElementById("card").onclick = () => { flipped = true; cards(); };
+  if (flipped) {
+    document.getElementById("again").onclick = () => grade(c, false);
+    document.getElementById("good").onclick = () => grade(c, true);
+  }
+}
+
+function grade(c, ok) {
+  const box = ok ? Math.min((srs[c.d]?.box ?? 0) + 1, INTERVALS.length - 1) : 0;
+  // "Again" puts the card a minute out so it returns at the end of this session.
+  srs[c.d] = { box, due: Date.now() + (ok ? INTERVALS[box] * DAY : 6e4) };
+  save(srs); flipped = false; cards();
+}
+
+function phrases(filter = "") {
+  const f = filter.toLowerCase();
+  const body = Object.entries(DATA).map(([cat, items]) => {
+    const hits = items.filter(([d, e]) => !f || d.toLowerCase().includes(f) || e.toLowerCase().includes(f));
+    return hits.length ? `<h2>${cat}</h2>` + hits.map(([d, e]) => `<div class="item"><b>${esc(d)}</b><span>${esc(e)}</span></div>`).join("") : "";
+  }).join("");
+  app.innerHTML = `<h1>Phrasebook</h1>
+    <input id="q" type="search" placeholder="Search Darija or English" value="${esc(filter)}">
+    <div class="meta">3 = ع · 7 = ح · 9 = ق · gh = غ · kh = خ</div>${body || '<div class="meta">No match.</div>'}`;
+  const q = document.getElementById("q");
+  q.oninput = e => { phrases(e.target.value); const n = document.getElementById("q"); n.focus(); n.setSelectionRange(n.value.length, n.value.length); };
+}
+
+document.querySelectorAll("nav button").forEach(b => b.onclick = () => {
+  document.querySelectorAll("nav button").forEach(x => x.classList.toggle("on", x === b));
+  b.dataset.view === "cards" ? cards() : phrases();
+});
+cards();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
