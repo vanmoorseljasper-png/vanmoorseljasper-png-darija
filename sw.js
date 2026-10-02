@@ -1,4 +1,4 @@
-const CACHE = "darija-v2";
+const CACHE = "darija-v3";
 const FILES = ["./", "index.html", "data.js", "manifest.json", "icons/icon.svg"];
 self.addEventListener("install", e => e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))));
 self.addEventListener("activate", e => e.waitUntil(

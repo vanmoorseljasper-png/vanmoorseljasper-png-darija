@@ -91,21 +91,28 @@ function cards() {
         <button class="nav" id="back" ${history.length ? "" : "disabled"}>← Back</button>
         ${flipped ? `<button class="again" id="again">Again</button><button class="good" id="good">Got it</button>` : ""}
       </div>
-      <div class="meta">${count}</div>`
+      <div class="meta">${count}</div>
+      <div class="row"><button class="nav" id="restart">↺ Start over</button></div>`
     : `<div class="card"><div class="front">Done 🎉</div><div class="meta">${mode === "due" ? "Nothing due here." : "You went through them all."}</div></div>
-      <div class="row"><button class="nav" id="back" ${history.length ? "" : "disabled"}>← Back</button><button class="good" id="restart">Do them all again</button></div>`}`;
+      <div class="row"><button class="nav" id="back" ${history.length ? "" : "disabled"}>← Back</button><button class="good" id="restart">↺ Start over</button></div>`}`;
   app.querySelectorAll("[data-deck]").forEach(b => b.onclick = () => { deck = b.dataset.deck; reset(); });
   app.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => { mode = b.dataset.mode; reset(); });
   document.getElementById("rev").onchange = e => { reverse = e.target.checked; flipped = false; cards(); };
   document.getElementById("back").onclick = back;
   const r = document.getElementById("restart");
-  if (r) r.onclick = () => { mode = "all"; reset(); };
+  if (r) r.onclick = startOver;
   if (!c) return;
   document.getElementById("card").onclick = () => { flipped = !flipped; cards(); };
   if (flipped) {
     document.getElementById("again").onclick = () => grade(c, false);
     document.getElementById("good").onclick = () => grade(c, true);
   }
+}
+
+// Due mode: forget progress for this category so every card is due again.
+function startOver() {
+  if (mode === "due") { inDeck().forEach(c => delete srs[c.d]); save(srs); }
+  reset();
 }
 
 function reset() { idx = 0; history = []; pinned = null; flipped = false; cards(); }
